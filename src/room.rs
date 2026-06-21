@@ -5,28 +5,38 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub enum JoinError {
+    RoomNotFound,
     RoomFull,
+    RoomSealed,
 }
 
 pub enum CreateRoomError {
     PasswordAlreadyUsed,
+    RoomLimitReached,
 }
 
+/// WebRTCMultiplayerPeerの規約上、ホストのpeer idは常に1。
+pub const HOST_PEER_ID: u32 = 1;
+
+/// 同時に存在できる部屋数の上限。
+pub const MAX_ROOMS: usize = 100;
+
 pub struct Client {
-    pub id: String,
+    pub id: u32,
     pub username: String,
     pub tx: UnboundedSender<Message>,
 }
 
 pub struct Room {
     pub max_player: u8,
-    pub host_id: String,
+    pub host_id: u32,
     pub clients: Vec<Client>,
+    pub is_sealed: bool,
 }
 
 impl Room {
     /// 与えられたidがホストか調べる
-    pub fn is_host(&self, client_id: &str) -> bool {
+    pub fn is_host(&self, client_id: u32) -> bool {
         self.host_id == client_id
     }
 
@@ -39,6 +49,10 @@ impl Room {
     }
 
     pub fn add_client(&mut self, client: Client) -> Result<(), JoinError> {
+        if self.is_sealed {
+            return Err(JoinError::RoomSealed);
+        }
+
         if self.clients.len() >= self.max_player as usize {
             return Err(JoinError::RoomFull);
         }
@@ -48,10 +62,19 @@ impl Room {
 
     /// クライアントを削除する。
     /// 削除したクライアントがホストだった場合は `true` を返す。
-    pub fn remove_client(&mut self, client_id: &str) -> bool {
+    pub fn remove_client(&mut self, client_id: u32) -> bool {
         let was_host = self.is_host(client_id);
         self.clients.retain(|c| c.id != client_id);
         was_host
+    }
+
+    /// まだ使われていないpeer idを探す。
+    pub fn next_peer_id(&self) -> u32 {
+        let mut id = HOST_PEER_ID + 1;
+        while self.clients.iter().any(|c| c.id == id) {
+            id += 1;
+        }
+        id
     }
 }
 
@@ -65,13 +88,17 @@ pub fn create_room(
     host: Client,
     max_player: u8,
 ) -> Result<(), CreateRoomError> {
+    if rooms.len() >= MAX_ROOMS {
+        return Err(CreateRoomError::RoomLimitReached);
+    }
     match rooms.entry(password) {
         Entry::Occupied(_) => Err(CreateRoomError::PasswordAlreadyUsed),
         Entry::Vacant(entry) => {
             entry.insert(Room {
                 max_player,
-                host_id: host.id.clone(),
+                host_id: host.id,
                 clients: vec![host],
+                is_sealed: false,
             });
             Ok(())
         }
