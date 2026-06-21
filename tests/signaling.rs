@@ -10,7 +10,7 @@ use tokio_tungstenite::tungstenite::Message;
 /// テスト用にサーバーをランダムポートで起動し、接続先アドレスを返す。
 async fn spawn_server() -> SocketAddr {
     let rooms = t1ds_signaling_rs::new_rooms();
-    let app = t1ds_signaling_rs::app(rooms);
+    let app = t1ds_signaling_rs::app(rooms, t1ds_signaling_rs::DEFAULT_MAX_ROOMS);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -186,6 +186,199 @@ async fn host_leaving_closes_room_for_guest() {
         guest.next().await.unwrap().unwrap(),
         Message::Close(_)
     ));
+}
+
+#[tokio::test]
+async fn seal_rejects_new_joins_but_not_existing_peers() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":4}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":"bob"}),
+    )
+    .await;
+    recv_json(&mut guest).await; // Id
+    recv_json(&mut guest).await; // HostInfo
+    recv_json(&mut host).await; // PeerConnect
+
+    send_json(&mut host, json!({"cmd":"Seal"})).await;
+
+    let mut late_guest = connect(addr).await;
+    send_json(
+        &mut late_guest,
+        json!({"cmd":"Join","password":"test","username":"carol"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut late_guest).await,
+        json!({"cmd":"Error","message":"room is sealed"})
+    );
+
+    // 封鎖前から入っていたピア同士の通信は影響を受けない
+    send_json(
+        &mut host,
+        json!({"cmd":"Offer","target_id":2,"sdp":"offer-sdp"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Offer","target_id":1,"sdp":"offer-sdp"})
+    );
+}
+
+#[tokio::test]
+async fn seal_by_non_host_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":4}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":"bob"}),
+    )
+    .await;
+    recv_json(&mut guest).await; // Id
+    recv_json(&mut guest).await; // HostInfo
+    recv_json(&mut host).await; // PeerConnect
+
+    send_json(&mut guest, json!({"cmd":"Seal"})).await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"only host can seal the room"})
+    );
+
+    // 封鎖されていないので新規参加は通常通り成功する
+    let mut late_guest = connect(addr).await;
+    send_json(
+        &mut late_guest,
+        json!({"cmd":"Join","password":"test","username":"carol"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut late_guest).await,
+        json!({"cmd":"Id","id":3})
+    );
+}
+
+#[tokio::test]
+async fn host_with_duplicate_password_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut other_host = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":4}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut host).await, json!({"cmd":"Id","id":1}));
+
+    send_json(
+        &mut other_host,
+        json!({"cmd":"Host","password":"test","username":"dave","max_player":4}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut other_host).await,
+        json!({"cmd":"Error","message":"password already in use"})
+    );
+}
+
+#[tokio::test]
+async fn join_when_room_full_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    // max_player=1なのでホスト自身で既に満員
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":1}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":"bob"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"room is full"})
+    );
+}
+
+#[tokio::test]
+async fn room_limit_reached_returns_error() {
+    let addr = spawn_server().await;
+
+    // MAX_ROOMS(10)まで部屋を埋める
+    let mut hosts = Vec::new();
+    for i in 0..10 {
+        let mut host = connect(addr).await;
+        send_json(
+            &mut host,
+            json!({"cmd":"Host","password":format!("room-{i}"),"username":"alice","max_player":2}),
+        )
+        .await;
+        assert_eq!(recv_json(&mut host).await, json!({"cmd":"Id","id":1}));
+        hosts.push(host);
+    }
+
+    let mut one_more = connect(addr).await;
+    send_json(
+        &mut one_more,
+        json!({"cmd":"Host","password":"one-too-many","username":"bob","max_player":2}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut one_more).await,
+        json!({"cmd":"Error","message":"room limit reached"})
+    );
+}
+
+#[tokio::test]
+async fn invalid_json_and_unknown_cmd_are_ignored() {
+    let addr = spawn_server().await;
+    let mut client = connect(addr).await;
+
+    // 不正なJSON
+    client
+        .send(Message::Text("not json".into()))
+        .await
+        .unwrap();
+    // 未知のcmd
+    client
+        .send(Message::Text(
+            json!({"cmd":"Unknown","foo":"bar"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+
+    // 接続は切れておらず、その後の正常なコマンドは処理される
+    send_json(
+        &mut client,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":2}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut client).await, json!({"cmd":"Id","id":1}));
 }
 
 #[tokio::test]
