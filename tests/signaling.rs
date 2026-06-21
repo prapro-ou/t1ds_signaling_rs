@@ -7,10 +7,18 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
 
+/// main.rsと同じ規則でMAX_ROOMS環境変数を読む。
+fn max_rooms_from_env() -> usize {
+    std::env::var("MAX_ROOMS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(t1ds_signaling_rs::DEFAULT_MAX_ROOMS)
+}
+
 /// テスト用にサーバーをランダムポートで起動し、接続先アドレスを返す。
 async fn spawn_server() -> SocketAddr {
     let rooms = t1ds_signaling_rs::new_rooms();
-    let app = t1ds_signaling_rs::app(rooms, t1ds_signaling_rs::DEFAULT_MAX_ROOMS);
+    let app = t1ds_signaling_rs::app(rooms, max_rooms_from_env());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -328,10 +336,11 @@ async fn join_when_room_full_returns_error() {
 #[tokio::test]
 async fn room_limit_reached_returns_error() {
     let addr = spawn_server().await;
+    let max_rooms = max_rooms_from_env();
 
-    // MAX_ROOMS(10)まで部屋を埋める
+    // MAX_ROOMSまで部屋を埋める
     let mut hosts = Vec::new();
-    for i in 0..10 {
+    for i in 0..max_rooms {
         let mut host = connect(addr).await;
         send_json(
             &mut host,
