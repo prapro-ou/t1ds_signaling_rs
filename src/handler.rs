@@ -32,6 +32,7 @@ pub(crate) fn handle_host(
     password: String,
     username: String,
     max_player: u8,
+    max_rooms: usize,
 ) -> Option<(String, u32)> {
     let client = Client {
         id: HOST_PEER_ID,
@@ -39,7 +40,7 @@ pub(crate) fn handle_host(
         tx: tx.clone(),
     };
     //パスワードが既に使われていないかを調べ、使われてないなら部屋を作る
-    match room::create_room(rooms, password.clone(), client, max_player) {
+    match room::create_room(rooms, password.clone(), client, max_player, max_rooms) {
         Ok(()) => {
             tracing::info!(%password, max_player, "room created");
             send(tx, &SignalMessage::Id { id: HOST_PEER_ID });

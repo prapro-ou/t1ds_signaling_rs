@@ -18,8 +18,8 @@ pub enum CreateRoomError {
 /// WebRTCMultiplayerPeerの規約上、ホストのpeer idは常に1。
 pub const HOST_PEER_ID: u32 = 1;
 
-/// 同時に存在できる部屋数の上限。
-pub const MAX_ROOMS: usize = 100;
+/// 同時に存在できる部屋数の上限のデフォルト値。
+pub const DEFAULT_MAX_ROOMS: usize = 10;
 
 pub struct Client {
     pub id: u32,
@@ -87,8 +87,9 @@ pub fn create_room(
     password: String,
     host: Client,
     max_player: u8,
+    max_rooms: usize,
 ) -> Result<(), CreateRoomError> {
-    if rooms.len() >= MAX_ROOMS {
+    if rooms.len() >= max_rooms {
         return Err(CreateRoomError::RoomLimitReached);
     }
     match rooms.entry(password) {

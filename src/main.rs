@@ -7,10 +7,17 @@ async fn main() {
         )
         .init();
 
-    let rooms = t1ds_signaling_rs::new_rooms();
-    let app = t1ds_signaling_rs::app(rooms);
+    let listen_addr =
+        std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
+    let max_rooms = std::env::var("MAX_ROOMS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(t1ds_signaling_rs::DEFAULT_MAX_ROOMS);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::info!(addr = "0.0.0.0:3000", "signaling server listening");
+    let rooms = t1ds_signaling_rs::new_rooms();
+    let app = t1ds_signaling_rs::app(rooms, max_rooms);
+
+    let listener = tokio::net::TcpListener::bind(&listen_addr).await.unwrap();
+    tracing::info!(addr = %listen_addr, max_rooms, "signaling server listening");
     axum::serve(listener, app).await.unwrap();
 }

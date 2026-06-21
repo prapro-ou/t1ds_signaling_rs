@@ -16,3 +16,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.29"
+webrtc = "0.17.1"

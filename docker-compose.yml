@@ -3,6 +3,9 @@ services:
     build: .
     expose:
       - "3000"
+    environment:
+      # LISTEN_ADDR: "0.0.0.0:3000" # 待ち受けアドレス変更時はexposeも合わせて変更する
+      MAX_ROOMS: "10"
     restart: unless-stopped
 
   caddy:

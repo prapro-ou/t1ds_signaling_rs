@@ -22,7 +22,7 @@ pub mod room;
 
 use handler::{handle_host, handle_join, handle_leave, handle_seal, send};
 use protocol::SignalMessage;
-pub use room::Rooms;
+pub use room::{DEFAULT_MAX_ROOMS, Rooms};
 
 /// Pingを送信する間隔
 const PING_INTERVAL: Duration = Duration::from_secs(15);
@@ -34,12 +34,19 @@ pub fn new_rooms() -> Rooms {
     Arc::new(DashMap::new())
 }
 
+/// アプリ全体で共有する状態
+#[derive(Clone)]
+pub struct AppState {
+    pub rooms: Rooms,
+    pub max_rooms: usize,
+}
+
 /// シグナリング用のRouterを構築する
-pub fn app(rooms: Rooms) -> Router {
+pub fn app(rooms: Rooms, max_rooms: usize) -> Router {
     Router::new()
         .route("/ws", get(ws_handler))
         .route("/stats", get(stats_handler))
-        .with_state(rooms)
+        .with_state(AppState { rooms, max_rooms })
 }
 
 #[derive(serde::Serialize)]
@@ -49,9 +56,9 @@ struct Stats {
 }
 
 /// 現在のルーム数と接続中の全ピア数を返す
-async fn stats_handler(State(rooms): State<Rooms>) -> Json<Stats> {
-    let room_count = rooms.len();
-    let peer_count = rooms.iter().map(|room| room.clients.len()).sum();
+async fn stats_handler(State(state): State<AppState>) -> Json<Stats> {
+    let room_count = state.rooms.len();
+    let peer_count = state.rooms.iter().map(|room| room.clients.len()).sum();
     Json(Stats {
         room_count,
         peer_count,
@@ -59,18 +66,19 @@ async fn stats_handler(State(rooms): State<Rooms>) -> Json<Stats> {
 }
 
 ///WebScoket通信にアップグレート
-async fn ws_handler(ws: WebSocketUpgrade, State(rooms): State<Rooms>) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, rooms))
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 ///WebSocketの処理
-async fn handle_socket(socket: WebSocket, rooms: Rooms) {
+async fn handle_socket(socket: WebSocket, state: AppState) {
     let conn_id = uuid::Uuid::new_v4();
     let span = tracing::info_span!("connection", %conn_id);
-    handle_socket_inner(socket, rooms).instrument(span).await;
+    handle_socket_inner(socket, state).instrument(span).await;
 }
 
-async fn handle_socket_inner(socket: WebSocket, rooms: Rooms) {
+async fn handle_socket_inner(socket: WebSocket, state: AppState) {
+    let AppState { rooms, max_rooms } = state;
     tracing::info!("client connected");
 
     //tx -> rx -> ws_tx -> ws_rx
@@ -136,7 +144,8 @@ async fn handle_socket_inner(socket: WebSocket, rooms: Rooms) {
                 username,
                 max_player,
             } => {
-                if let Some(j) = handle_host(&rooms, &tx, password, username, max_player) {
+                if let Some(j) = handle_host(&rooms, &tx, password, username, max_player, max_rooms)
+                {
                     joined = Some(j);
                 }
             }
