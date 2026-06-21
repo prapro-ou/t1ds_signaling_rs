@@ -15,8 +15,17 @@ fn max_rooms_from_env() -> usize {
         .unwrap_or(t1ds_signaling_rs::DEFAULT_MAX_ROOMS)
 }
 
+/// RUST_LOGが設定されていればテスト出力にログを流す。
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .try_init();
+}
+
 /// テスト用にサーバーをランダムポートで起動し、接続先アドレスを返す。
 async fn spawn_server() -> SocketAddr {
+    init_tracing();
     let rooms = t1ds_signaling_rs::new_rooms();
     let app = t1ds_signaling_rs::app(rooms, max_rooms_from_env());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
