@@ -373,6 +373,106 @@ async fn room_limit_reached_returns_error() {
 }
 
 #[tokio::test]
+async fn host_with_too_long_username_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+
+    let long_username = "a".repeat(33);
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":long_username,"max_player":2}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut host).await,
+        json!({"cmd":"Error","message":"username too long"})
+    );
+}
+
+#[tokio::test]
+async fn host_with_too_long_password_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+
+    let long_password = "a".repeat(65);
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":long_password,"username":"alice","max_player":2}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut host).await,
+        json!({"cmd":"Error","message":"password too long"})
+    );
+}
+
+#[tokio::test]
+async fn join_with_too_long_username_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":2}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    let long_username = "a".repeat(33);
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":long_username}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"username too long"})
+    );
+}
+
+#[tokio::test]
+async fn join_with_too_long_password_returns_error() {
+    let addr = spawn_server().await;
+    let mut guest = connect(addr).await;
+
+    let long_password = "a".repeat(65);
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":long_password,"username":"bob"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"password too long"})
+    );
+}
+
+#[tokio::test]
+async fn host_and_join_with_max_length_credentials_succeed() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    let max_password = "p".repeat(64);
+    let max_username = "u".repeat(32);
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":max_password.clone(),"username":max_username,"max_player":2}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut host).await, json!({"cmd":"Id","id":1}));
+
+    let guest_username = "g".repeat(32);
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":max_password,"username":guest_username}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut guest).await, json!({"cmd":"Id","id":2}));
+}
+
+#[tokio::test]
 async fn invalid_json_and_unknown_cmd_are_ignored() {
     let addr = spawn_server().await;
     let mut client = connect(addr).await;

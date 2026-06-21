@@ -25,6 +25,17 @@ fn send_host_error(tx: &mpsc::UnboundedSender<Message>, password: &str, e: room:
     );
 }
 
+/// パスワード・ユーザー名が文字数の上限を超えていないか調べる。
+fn validate_credentials(password: &str, username: &str) -> Result<(), &'static str> {
+    if password.chars().count() > room::MAX_PASSWORD_LEN {
+        return Err("password too long");
+    }
+    if username.chars().count() > room::MAX_USERNAME_LEN {
+        return Err("username too long");
+    }
+    Ok(())
+}
+
 /// ホスト要求を処理する。成功したら (password, peer_id) を返す。
 pub(crate) fn handle_host(
     rooms: &Rooms,
@@ -34,6 +45,16 @@ pub(crate) fn handle_host(
     max_player: u8,
     max_rooms: usize,
 ) -> Option<(String, u32)> {
+    if let Err(message) = validate_credentials(&password, &username) {
+        tracing::warn!(%password, message, "host failed");
+        send(
+            tx,
+            &SignalMessage::Error {
+                message: message.to_string(),
+            },
+        );
+        return None;
+    }
     let client = Client {
         id: HOST_PEER_ID,
         username,
@@ -132,6 +153,16 @@ pub(crate) fn handle_join(
     password: String,
     username: String,
 ) -> Option<(String, u32)> {
+    if let Err(message) = validate_credentials(&password, &username) {
+        tracing::warn!(%password, message, "join failed");
+        send(
+            tx,
+            &SignalMessage::Error {
+                message: message.to_string(),
+            },
+        );
+        return None;
+    }
     //部屋が見つからなかったらエラーを返す
     let Some(mut room) = rooms.get_mut(&password) else {
         send_join_error(tx, &password, room::JoinError::RoomNotFound);

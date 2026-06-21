@@ -21,6 +21,12 @@ pub const HOST_PEER_ID: u32 = 1;
 /// 同時に存在できる部屋数の上限のデフォルト値。
 pub const DEFAULT_MAX_ROOMS: usize = 10;
 
+/// ユーザー名の最大文字数。
+pub const MAX_USERNAME_LEN: usize = 32;
+
+/// パスワードの最大文字数。
+pub const MAX_PASSWORD_LEN: usize = 64;
+
 pub struct Client {
     pub id: u32,
     pub username: String,

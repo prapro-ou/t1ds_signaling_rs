@@ -11,6 +11,7 @@ WebRTC(Godotの `WebRTCMultiplayerPeer` 想定)向けのシグナリングサー
 - 部屋封鎖(`Seal`)で以降の新規参加を拒否
 - Ping/Pong(15秒間隔送信、45秒無応答で切断)による死活監視
 - `/stats`で現在の部屋数・接続中ピア数を取得可能
+- `username`は32文字、`password`は64文字までの上限あり(超えると`Error`を返す)
 
 ## 起動方法
 
