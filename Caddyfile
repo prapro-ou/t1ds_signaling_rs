@@ -1,0 +1,4 @@
+signaling.kotukoroom.net {
+    reverse_proxy /ws signaling:3000
+    reverse_proxy /stats signaling:3000
+}
