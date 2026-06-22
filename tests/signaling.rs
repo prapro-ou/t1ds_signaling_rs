@@ -113,7 +113,7 @@ async fn host_join_offer_answer_ice_leave() {
     );
     assert_eq!(
         recv_json(&mut host).await,
-        json!({"cmd":"PeerConnect","id":2})
+        json!({"cmd":"PeerConnect","id":2,"username":"bob"})
     );
 
     // host(1) -> guest(2)
@@ -151,7 +151,7 @@ async fn host_join_offer_answer_ice_leave() {
     send_json(&mut guest, json!({"cmd":"Leave"})).await;
     assert_eq!(
         recv_json(&mut host).await,
-        json!({"cmd":"PeerDisconnect","id":2})
+        json!({"cmd":"PeerDisconnect","id":2,"username":"bob"})
     );
 }
 
@@ -196,7 +196,7 @@ async fn host_leaving_closes_room_for_guest() {
     send_json(&mut host, json!({"cmd":"Leave"})).await;
     assert_eq!(
         recv_json(&mut guest).await,
-        json!({"cmd":"PeerDisconnect","id":1})
+        json!({"cmd":"PeerDisconnect","id":1,"username":"alice"})
     );
     // ホスト退出後はサーバーから接続が閉じられる
     assert!(matches!(

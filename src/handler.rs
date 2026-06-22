@@ -112,10 +112,20 @@ pub(crate) fn handle_leave(rooms: &Rooms, joined: &mut Option<(String, u32)>) {
     let Some(mut room) = rooms.get_mut(&password) else {
         return;
     };
+    let username = room
+        .clients
+        .iter()
+        .find(|c| c.id == my_id)
+        .map(|c| c.username.clone())
+        .unwrap_or_default();
     let was_host = room.remove_client(my_id);
     tracing::info!(%password, peer_id = my_id, was_host, "peer left room");
+    let peer_disconnect_msg = SignalMessage::PeerDisconnect {
+        id: my_id,
+        username,
+    };
     for c in &room.clients {
-        send(&c.tx, &SignalMessage::PeerDisconnect { id: my_id });
+        send(&c.tx, &peer_disconnect_msg);
         //ホストが抜けた場合、セッションは継続できないので残りの接続も明示的に切る
         if was_host {
             let _ = c.tx.send(Message::Close(None));
@@ -171,7 +181,7 @@ pub(crate) fn handle_join(
     let new_id = room.next_peer_id();
     let client = Client {
         id: new_id,
-        username,
+        username: username.clone(),
         tx: tx.clone(),
     };
 
@@ -183,9 +193,13 @@ pub(crate) fn handle_join(
 
     tracing::info!(%password, peer_id = new_id, "peer joined room");
     //全員に新規参加者を通知
+    let peer_connect_msg = SignalMessage::PeerConnect {
+        id: new_id,
+        username,
+    };
     for c in &room.clients {
         if c.id != new_id {
-            send(&c.tx, &SignalMessage::PeerConnect { id: new_id });
+            send(&c.tx, &peer_connect_msg);
         }
     }
     //自分のidをクライアントに

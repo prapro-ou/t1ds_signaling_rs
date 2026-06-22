@@ -36,9 +36,11 @@ pub enum SignalMessage {
     },
     PeerConnect {
         id: u32,
+        username: String,
     },
     PeerDisconnect {
         id: u32,
+        username: String,
     },
     Error {
         message: String,

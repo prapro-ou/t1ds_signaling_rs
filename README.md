@@ -54,8 +54,8 @@ cargo run
 | --- | --- | --- |
 | `Id` | `id` | 自分のpeer idを通知する |
 | `HostInfo` | `username` | ホストのユーザー名を通知する(参加時) |
-| `PeerConnect` | `id` | 新規ピアの参加を通知する |
-| `PeerDisconnect` | `id` | ピアの退出を通知する |
+| `PeerConnect` | `id`, `username` | 新規ピアの参加を通知する |
+| `PeerDisconnect` | `id`, `username` | ピアの退出を通知する |
 | `Error` | `message` | 失敗(部屋が見つからない、満員、封鎖済みなど)を通知する |
 
 ホストが退出した場合はセッションを継続できないため、部屋の全員に`PeerDisconnect`を送ったうえで接続を切断し、部屋自体も破棄する。
