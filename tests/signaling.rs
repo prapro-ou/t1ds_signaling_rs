@@ -499,6 +499,78 @@ async fn join_with_too_long_password_returns_error() {
 }
 
 #[tokio::test]
+async fn host_with_empty_username_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"","max_player":2}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut host).await,
+        json!({"cmd":"Error","message":"username must not be empty"})
+    );
+}
+
+#[tokio::test]
+async fn host_with_empty_password_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"","username":"alice","max_player":2}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut host).await,
+        json!({"cmd":"Error","message":"password must not be empty"})
+    );
+}
+
+#[tokio::test]
+async fn join_with_empty_username_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":2}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":""}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"username must not be empty"})
+    );
+}
+
+#[tokio::test]
+async fn join_with_empty_password_returns_error() {
+    let addr = spawn_server().await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"","username":"bob"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"password must not be empty"})
+    );
+}
+
+#[tokio::test]
 async fn host_and_join_with_max_length_credentials_succeed() {
     let addr = spawn_server().await;
     let mut host = connect(addr).await;

@@ -25,8 +25,14 @@ fn send_host_error(tx: &mpsc::UnboundedSender<Message>, password: &str, e: room:
     );
 }
 
-/// パスワード・ユーザー名が文字数の上限を超えていないか調べる。
+/// パスワード・ユーザー名が空文字列でなく、文字数の上限を超えていないか調べる。
 fn validate_credentials(password: &str, username: &str) -> Result<(), &'static str> {
+    if password.is_empty() {
+        return Err("password must not be empty");
+    }
+    if username.is_empty() {
+        return Err("username must not be empty");
+    }
     if password.chars().count() > room::MAX_PASSWORD_LEN {
         return Err("password too long");
     }
