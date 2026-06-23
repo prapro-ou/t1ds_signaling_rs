@@ -156,6 +156,56 @@ async fn host_join_offer_answer_ice_leave() {
 }
 
 #[tokio::test]
+async fn third_peer_learns_about_existing_guest() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest1 = connect(addr).await;
+    let mut guest2 = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":3}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut host).await, json!({"cmd":"Id","id":1}));
+
+    send_json(
+        &mut guest1,
+        json!({"cmd":"Join","password":"test","username":"bob"}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut guest1).await, json!({"cmd":"Id","id":2}));
+    assert_eq!(
+        recv_json(&mut guest1).await,
+        json!({"cmd":"HostInfo","username":"alice"})
+    );
+    recv_json(&mut host).await; // PeerConnect (bob)
+
+    send_json(
+        &mut guest2,
+        json!({"cmd":"Join","password":"test","username":"carol"}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut guest2).await, json!({"cmd":"Id","id":3}));
+    assert_eq!(
+        recv_json(&mut guest2).await,
+        json!({"cmd":"HostInfo","username":"alice"})
+    );
+    // 既にいるbob(id:2)の情報も新規参加者carolに通知される
+    assert_eq!(
+        recv_json(&mut guest2).await,
+        json!({"cmd":"PeerConnect","id":2,"username":"bob"})
+    );
+
+    // ホストとbobはcarolの参加を通知される
+    recv_json(&mut host).await; // PeerConnect (carol)
+    assert_eq!(
+        recv_json(&mut guest1).await,
+        json!({"cmd":"PeerConnect","id":3,"username":"carol"})
+    );
+}
+
+#[tokio::test]
 async fn join_with_wrong_password_returns_error() {
     let addr = spawn_server().await;
     let mut guest = connect(addr).await;

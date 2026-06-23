@@ -213,5 +213,17 @@ pub(crate) fn handle_join(
             },
         );
     }
+    //既にいる他のゲストの情報を新規参加者に通知（ホストはHostInfoで通知済み）
+    for c in &room.clients {
+        if c.id != new_id && c.id != room.host_id {
+            send(
+                tx,
+                &SignalMessage::PeerConnect {
+                    id: c.id,
+                    username: c.username.clone(),
+                },
+            );
+        }
+    }
     Some((password, new_id))
 }
