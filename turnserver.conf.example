@@ -1,0 +1,32 @@
+# coturn設定
+# static-auth-secret は docker-compose.yml 側で --static-auth-secret として渡すため
+# ここには書かない(.envのTURN_SECRETに保存する)
+
+listening-port=3478
+tls-listening-port=5349
+min-port=49160
+max-port=49259
+
+fingerprint
+lt-cred-mech
+use-auth-secret
+realm=turn.kotukoroom.net
+
+# NAT越しの環境で待ち受ける場合はサーバーのグローバルIPに書き換える
+external-ip=YOUR_SERVER_PUBLIC_IP
+
+# CaddyがACMEで取得した証明書をそのまま読む
+cert=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.kotukoroom.net/turn.kotukoroom.net.crt
+pkey=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.kotukoroom.net/turn.kotukoroom.net.key
+
+no-cli
+no-tlsv1
+no-tlsv1_1
+
+# ローカル/マルチキャストアドレスへの中継を禁止(SSRF対策)
+no-loopback-peers
+no-multicast-peers
+
+# Prometheusメトリクスを 0.0.0.0:9641/metrics で公開
+prometheus
+prometheus-port=9641

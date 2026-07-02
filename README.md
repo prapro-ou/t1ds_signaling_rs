@@ -34,7 +34,7 @@ cargo run
 
 ## プロトコル
 
-`/ws`上でJSONメッセージをやり取りする。各メッセージは`cmd`フィールドで種別を判別する(`src/protocol.rs`)。
+`/ws`上でJSONメッセージをやり取りする。各メッセージは`cmd`フィールドで種別を判別する
 
 ### クライアント → サーバー
 
@@ -60,6 +60,14 @@ cargo run
 
 ホストが退出した場合はセッションを継続できないため、部屋の全員に`PeerDisconnect`を送ったうえで接続を切断し、部屋自体も破棄する。
 
+### TURNサーバー(coturn)
+
+対称NAT環境などP2P直接接続できないクライアントのために、docker imageを用いてpodmanでcoturnもデプロイしてえいる。
+
+coturn リポジトリ
+https://github.com/coturn/coturn
+
+
 ## テスト
 
 ```bash
@@ -74,12 +82,21 @@ RUST_LOG=t1ds_signaling_rs=debug cargo test -- --nocapture
 
 ## デプロイ
 
-`Dockerfile`は`x86_64-unknown-linux-musl`向けにビルドした静的バイナリを`FROM scratch`イメージにコピーする想定(`.cargo/config.toml`参照)。
+`Dockerfile`は`x86_64-unknown-linux-musl`向けにビルドした静的バイナリを`FROM scratch`イメージにコピーする想定
+
+サーバー側に必要なのは以下のファイル
+- target/x86_64-unknown-linux-musl/release/t1ds_signaling_rs
+- Dockerfile
+- docker-compose.yml
+- turnserver.conf
+- .env
+- Caddyfile
 
 ```bash
 cargo build --release --target x86_64-unknown-linux-musl
 cp target/x86_64-unknown-linux-musl/release/t1ds_signaling_rs .
+cp Dockerfile docker-compose.yml turnserver.conf .env Caddyfile .
 docker compose up -d --build
 ```
 
-`docker-compose.yml`はCaddyをリバースプロキシとして`/ws`・`/stats`を公開する構成。
+`docker-compose.yml`はCaddyをリバースプロキシとして`/ws`・`/stats`を公開する

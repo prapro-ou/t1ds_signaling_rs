@@ -2,3 +2,8 @@ signaling.kotukoroom.net {
     reverse_proxy /ws signaling:3000
     reverse_proxy /stats signaling:3000
 }
+
+# coturn用のTLS証明書をCaddyのACMEで取得するためだけのブロック(HTTPレスポンス自体は使わない)
+turn.kotukoroom.net {
+    respond 404
+}

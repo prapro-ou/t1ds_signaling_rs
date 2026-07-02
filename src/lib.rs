@@ -19,10 +19,13 @@ use tracing::Instrument;
 pub mod handler;
 pub mod protocol;
 pub mod room;
+pub mod turn;
 
 use handler::{handle_host, handle_join, handle_leave, handle_seal, send};
 use protocol::SignalMessage;
 pub use room::{DEFAULT_MAX_ROOMS, Rooms};
+
+use crate::turn::TurnConfig;
 
 /// Pingを送信する間隔
 const PING_INTERVAL: Duration = Duration::from_secs(15);
@@ -34,35 +37,92 @@ pub fn new_rooms() -> Rooms {
     Arc::new(DashMap::new())
 }
 
+/// coturnメトリクス取得のタイムアウト。coturnが落ちていても/statsを遅延させない
+const TURN_METRICS_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// アプリ全体で共有する状態
 #[derive(Clone)]
 pub struct AppState {
     pub rooms: Rooms,
     pub max_rooms: usize,
+    /// coturnのprometheusメトリクスURL(未設定ならcoturn接続数は返さない)
+    pub turn_metrics_url: Option<String>,
+    /// メトリクス取得用のHTTPクライアント
+    pub http: reqwest::Client,
+    pub turn: Option<TurnConfig>,
 }
 
 /// シグナリング用のRouterを構築する
 pub fn app(rooms: Rooms, max_rooms: usize) -> Router {
+    // 例: http://host.docker.internal:9641/metrics
+    let turn_metrics_url = std::env::var("TURN_METRICS_URL")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let http = reqwest::Client::builder()
+        .timeout(TURN_METRICS_TIMEOUT)
+        .build()
+        .expect("failed to build http client");
+
     Router::new()
         .route("/ws", get(ws_handler))
         .route("/stats", get(stats_handler))
-        .with_state(AppState { rooms, max_rooms })
+        .with_state(AppState {
+            rooms,
+            max_rooms,
+            turn_metrics_url,
+            http,
+            turn: TurnConfig::from_env(),
+        })
 }
 
 #[derive(serde::Serialize)]
 struct Stats {
     room_count: usize,
     peer_count: usize,
+    /// coturnの現在のアロケーション数。取得できない場合はnull
+    turn_allocations: Option<u64>,
 }
 
-/// 現在のルーム数と接続中の全ピア数を返す
+/// 現在のルーム数・接続中の全ピア数と、coturnのアロケーション数を返す
 async fn stats_handler(State(state): State<AppState>) -> Json<Stats> {
     let room_count = state.rooms.len();
     let peer_count = state.rooms.iter().map(|room| room.clients.len()).sum();
+    let turn_allocations = fetch_turn_allocations(&state).await;
     Json(Stats {
         room_count,
         peer_count,
+        turn_allocations,
     })
+}
+
+/// coturnのprometheusメトリクスを取得し、現在のアロケーション数を返す
+async fn fetch_turn_allocations(state: &AppState) -> Option<u64> {
+    let url = state.turn_metrics_url.as_ref()?;
+    let body = match state.http.get(url).send().await {
+        Ok(resp) => match resp.text().await {
+            Ok(body) => body,
+            Err(e) => {
+                tracing::warn!(%e, "failed to read turn metrics body");
+                return None;
+            }
+        },
+        Err(e) => {
+            tracing::warn!(%e, "failed to fetch turn metrics");
+            return None;
+        }
+    };
+    Some(parse_turn_allocations(&body))
+}
+
+/// prometheusテキストから `turn_total_allocations` の合計値を取り出す。
+/// 例: `turn_total_allocations{type="UDP"} 3`
+pub fn parse_turn_allocations(body: &str) -> u64 {
+    body.lines()
+        .filter(|line| !line.starts_with('#') && line.starts_with("turn_total_allocations"))
+        .filter_map(|line| line.split_whitespace().last())
+        .filter_map(|value| value.parse::<f64>().ok())
+        .map(|value| value as u64)
+        .sum()
 }
 
 ///WebScoket通信にアップグレート
@@ -78,7 +138,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 }
 
 async fn handle_socket_inner(socket: WebSocket, state: AppState) {
-    let AppState { rooms, max_rooms } = state;
+    let AppState {
+        rooms,
+        max_rooms,
+        turn,
+        ..
+    } = state;
     tracing::info!("client connected");
 
     //tx -> rx -> ws_tx -> ws_rx
@@ -146,12 +211,28 @@ async fn handle_socket_inner(socket: WebSocket, state: AppState) {
             } => {
                 if let Some(j) = handle_host(&rooms, &tx, password, username, max_player, max_rooms)
                 {
+                    if let Some(t) = &turn {
+                        send(
+                            &tx,
+                            &SignalMessage::IceServers {
+                                ice_servers: t.ice_servers(j.1),
+                            },
+                        );
+                    }
                     joined = Some(j);
                 }
             }
             //指定したパスワードの部屋に参加する
             SignalMessage::Join { password, username } => {
                 if let Some(j) = handle_join(&rooms, &tx, password, username) {
+                    if let Some(t) = &turn {
+                        send(
+                            &tx,
+                            &SignalMessage::IceServers {
+                                ice_servers: t.ice_servers(j.1),
+                            },
+                        );
+                    }
                     joined = Some(j);
                 }
             }
@@ -196,6 +277,7 @@ async fn handle_socket_inner(socket: WebSocket, state: AppState) {
             }
             //サーバー -> クライアントのみのCMDなので無視
             SignalMessage::Id { .. }
+            | SignalMessage::IceServers { .. }
             | SignalMessage::HostInfo { .. }
             | SignalMessage::PeerConnect { .. }
             | SignalMessage::PeerDisconnect { .. }

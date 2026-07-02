@@ -6,16 +6,38 @@ services:
     environment:
       # LISTEN_ADDR: "0.0.0.0:3000" # 待ち受けアドレス変更時はexposeも合わせて変更する
       MAX_ROOMS: "10"
+      # coturn(network_mode: host)のprometheusをコンテナ内部から読む。
+      #必ずファイアウォール等で外部からの接続を断つこと
+      TURN_METRICS_URL: "http://host.docker.internal:9641/metrics"
+      
+      TURN_SECRET: ${TURN_SECRET}
+      TURN_HOST: turn.kotukoroom.net
+      TURN_TTL_SECS: "21600"
+    extra_hosts:
+      # host.docker.internal をホスト(=coturnの待ち受け先)に解決させる
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   caddy:
-    image: caddy:2
+    image: docker.io/library/caddy:2
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    restart: unless-stopped
+
+  coturn:
+    image: docker.io/coturn/coturn:4.14.0-alpine
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - caddy_data:/caddy-data:ro
+    command:
+      - "-c"
+      - "/etc/coturn/turnserver.conf"
+      - "--static-auth-secret=${TURN_SECRET}"
     restart: unless-stopped
 
 volumes:

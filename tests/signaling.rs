@@ -627,7 +627,10 @@ async fn stats_reports_room_and_peer_counts() {
 
     let (status, body) = http_get(addr, "/stats").await;
     assert_eq!(status, 200);
-    assert_eq!(body, json!({"room_count": 0, "peer_count": 0}));
+    assert_eq!(
+        body,
+        json!({"room_count": 0, "peer_count": 0, "turn_allocations": null})
+    );
 
     let mut host = connect(addr).await;
     send_json(
@@ -649,12 +652,18 @@ async fn stats_reports_room_and_peer_counts() {
 
     let (status, body) = http_get(addr, "/stats").await;
     assert_eq!(status, 200);
-    assert_eq!(body, json!({"room_count": 1, "peer_count": 2}));
+    assert_eq!(
+        body,
+        json!({"room_count": 1, "peer_count": 2, "turn_allocations": null})
+    );
 
     send_json(&mut guest, json!({"cmd":"Leave"})).await;
     recv_json(&mut host).await; // PeerDisconnect
 
     let (status, body) = http_get(addr, "/stats").await;
     assert_eq!(status, 200);
-    assert_eq!(body, json!({"room_count": 1, "peer_count": 1}));
+    assert_eq!(
+        body,
+        json!({"room_count": 1, "peer_count": 1, "turn_allocations": null})
+    );
 }

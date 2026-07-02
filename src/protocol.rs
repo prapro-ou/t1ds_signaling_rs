@@ -1,5 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub credential: Option<String>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "cmd")]
 pub enum SignalMessage {
@@ -11,6 +20,9 @@ pub enum SignalMessage {
     Join {
         password: String,
         username: String,
+    },
+    IceServers {
+        ice_servers: Vec<IceServer>,
     },
     Leave {},
     Offer {
