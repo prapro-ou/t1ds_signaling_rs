@@ -42,16 +42,26 @@ services:
     # 1) 証明書ができるまで待ってから起動
     # 2) 約7日ごとに自己終了し、restart で Caddy が更新した新しい証明書を読み直す
     #    (coturnは証明書をホットリロードしないため、再起動でしか更新を反映できない)
+    # 3) Caddyの証明書保存パスにはACME発行元のディレクトリ名(例: acme-v02.api.letsencrypt.org-directory)が
+    #    含まれ、発行元が変わる(ZeroSSLへのフォールバック等)と変化するため、findで動的に探索する
     entrypoint:
       - /bin/sh
       - -c
       - |
-        cert=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.kotukoroom.net/turn.kotukoroom.net.crt
-        until [ -f "$$cert" ]; do
-          echo "waiting for TLS cert: $$cert"
-          sleep 5
+        domain=turn.kotukoroom.net
+        cert_dir=/caddy-data/caddy/certificates
+        cert=""
+        until [ -n "$$cert" ]; do
+          cert=$$(find "$$cert_dir" -type f -name "$$domain.crt" 2>/dev/null | head -n1)
+          if [ -z "$$cert" ]; then
+            echo "waiting for TLS cert under $$cert_dir"
+            sleep 5
+          fi
         done
-        exec timeout 604800 turnserver -c /etc/coturn/turnserver.conf --static-auth-secret="$$TURN_SECRET"
+        key="$${cert%.crt}.key"
+        conf=/tmp/turnserver.conf
+        sed -e "s#^cert=.*#cert=$$cert#" -e "s#^pkey=.*#pkey=$$key#" /etc/coturn/turnserver.conf > "$$conf"
+        exec timeout 604800 turnserver -c "$$conf" --static-auth-secret="$$TURN_SECRET"
     restart: unless-stopped
 
 volumes:
