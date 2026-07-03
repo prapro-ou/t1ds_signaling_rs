@@ -26,6 +26,9 @@ cargo run
 | `LISTEN_ADDR` | 待ち受けアドレス | `0.0.0.0:3000` |
 | `MAX_ROOMS` | 同時に存在できる部屋数の上限 | `10` |
 | `RUST_LOG` | ログレベル(`tracing-subscriber`の`EnvFilter`) | `t1ds_signaling_rs=info` |
+| `TURN_SECRET` | coturnと共有するstatic-auth-secret | なし(`TURN_HOST`と片方でも欠けると`IceServers`配布が無効) |
+| `TURN_HOST` | `IceServers`で配布するSTUN/TURNのホスト名 | なし(同上) |
+| `TURN_TTL_SECS` | TURNクレデンシャルの有効期間(秒) | `21600`(6時間) |
 
 ## エンドポイント
 
@@ -53,6 +56,7 @@ cargo run
 | cmd | フィールド | 説明 |
 | --- | --- | --- |
 | `Id` | `id` | 自分のpeer idを通知する |
+| `IceServers` | `ice_servers` | STUN/TURNサーバーの一覧を通知する(`Host`/`Join`成功直後) |
 | `HostInfo` | `username` | ホストのユーザー名を通知する(参加時) |
 | `PeerConnect` | `id`, `username` | 新規ピアの参加を通知する |
 | `PeerDisconnect` | `id`, `username` | ピアの退出を通知する |
@@ -64,10 +68,7 @@ cargo run
 
 対称NAT環境などP2P直接接続できないクライアントのために、docker imageを用いてpodmanでcoturnもデプロイしてえいる。
 
-coturnのTLS証明書はCaddyがACMEで取得したものを共有する。coturnは証明書をホットリロードしないため、`docker-compose.yml`のcoturnのエントリポイントで以下を行っている。
-
-- 起動時: 証明書ファイルが生成されるまで待ってからturnserverを起動する(Caddyの取得より先に起動しても壊れない)
-- 更新対応: 約7日ごと(`timeout 604800`)にcoturnを自己終了させ、`restart: unless-stopped`で再起動して更新後の新しい証明書を読み直す
+TURNはTLSなし(`turn:` UDP/TCP 3478)のみ提供する。メディアはWebRTC側でDTLS-SRTP暗号化済み、認証もHMACベースのため、TLSがなくても秘匿性は損なわれない(`turns:`が効くのはポート443しか通さない・DPIを行うネットワークの通過用で、必要になったら別IPでの443待ち受けを検討する)。
 
 coturn リポジトリ
 https://github.com/coturn/coturn
