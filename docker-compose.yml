@@ -31,13 +31,27 @@ services:
   coturn:
     image: docker.io/coturn/coturn:4.14.0-alpine
     network_mode: host
+    depends_on:
+      - caddy
     volumes:
       - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
       - caddy_data:/caddy-data:ro
-    command:
-      - "-c"
-      - "/etc/coturn/turnserver.conf"
-      - "--static-auth-secret=${TURN_SECRET}"
+    environment:
+      # --static-auth-secret でコマンドラインに出さず、環境変数経由でturnserverに渡す
+      TURN_SECRET: ${TURN_SECRET}
+    # 1) 証明書ができるまで待ってから起動
+    # 2) 約7日ごとに自己終了し、restart で Caddy が更新した新しい証明書を読み直す
+    #    (coturnは証明書をホットリロードしないため、再起動でしか更新を反映できない)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cert=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.kotukoroom.net/turn.kotukoroom.net.crt
+        until [ -f "$$cert" ]; do
+          echo "waiting for TLS cert: $$cert"
+          sleep 5
+        done
+        exec timeout 604800 turnserver -c /etc/coturn/turnserver.conf --static-auth-secret="$$TURN_SECRET"
     restart: unless-stopped
 
 volumes:

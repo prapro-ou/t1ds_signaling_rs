@@ -64,6 +64,11 @@ cargo run
 
 対称NAT環境などP2P直接接続できないクライアントのために、docker imageを用いてpodmanでcoturnもデプロイしてえいる。
 
+coturnのTLS証明書はCaddyがACMEで取得したものを共有する。coturnは証明書をホットリロードしないため、`docker-compose.yml`のcoturnのエントリポイントで以下を行っている。
+
+- 起動時: 証明書ファイルが生成されるまで待ってからturnserverを起動する(Caddyの取得より先に起動しても壊れない)
+- 更新対応: 約7日ごと(`timeout 604800`)にcoturnを自己終了させ、`restart: unless-stopped`で再起動して更新後の新しい証明書を読み直す
+
 coturn リポジトリ
 https://github.com/coturn/coturn
 
