@@ -31,6 +31,9 @@ services:
   coturn:
     image: docker.io/coturn/coturn:4.14.0-alpine
     network_mode: host
+    # Caddyの証明書はroot専用(0700/0600)で保存されるため、entrypointのシェルだけrootで動かして
+    # 証明書を/tmpにコピーし、turnserver自体はsetprivでnobodyに落として起動する(最小権限)
+    user: root
     depends_on:
       - caddy
     volumes:
@@ -59,9 +62,16 @@ services:
           fi
         done
         key="$${cert%.crt}.key"
+        # rootで読める証明書をnobodyが読める場所へコピー(元はroot専用0600)
+        cp "$$cert" /tmp/turn.crt
+        cp "$$key" /tmp/turn.key
+        chown 65534:65534 /tmp/turn.crt /tmp/turn.key
+        chmod 600 /tmp/turn.crt /tmp/turn.key
         conf=/tmp/turnserver.conf
-        sed -e "s#^cert=.*#cert=$$cert#" -e "s#^pkey=.*#pkey=$$key#" /etc/coturn/turnserver.conf > "$$conf"
-        exec timeout 604800 turnserver -c "$$conf" --static-auth-secret="$$TURN_SECRET"
+        sed -e "s#^cert=.*#cert=/tmp/turn.crt#" -e "s#^pkey=.*#pkey=/tmp/turn.key#" /etc/coturn/turnserver.conf > "$$conf"
+        chown 65534:65534 "$$conf"
+        # nobody(65534)に権限を落としてturnserverを起動
+        exec timeout 604800 setpriv --reuid=65534 --regid=65534 --clear-groups turnserver -c "$$conf" --static-auth-secret="$$TURN_SECRET"
     restart: unless-stopped
 
 volumes:
