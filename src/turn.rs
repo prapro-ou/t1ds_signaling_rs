@@ -70,7 +70,6 @@ impl TurnConfig {
                 urls: vec![
                     format!("turn:{}:3478?transport=udp", self.host),
                     format!("turn:{}:3478?transport=tcp", self.host),
-                    format!("turns:{}:5349?transport=tcp", self.host),
                 ],
                 username: Some(username),
                 credential: Some(credential),
@@ -131,7 +130,6 @@ mod tests {
         let expected_urls: Vec<String> = vec![
             "turn:turn.example.com:3478?transport=udp".to_string(),
             "turn:turn.example.com:3478?transport=tcp".to_string(),
-            "turns:turn.example.com:5349?transport=tcp".to_string(),
         ];
         assert_eq!(turn.urls, expected_urls);
         assert!(turn.username.is_some());

@@ -31,47 +31,15 @@ services:
   coturn:
     image: docker.io/coturn/coturn:4.14.0-alpine
     network_mode: host
-    # Caddyの証明書はroot専用(0700/0600)で保存されるため、entrypointのシェルだけrootで動かして
-    # 証明書を/tmpにコピーし、turnserver自体はsetprivでnobodyに落として起動する(最小権限)
-    user: root
-    depends_on:
-      - caddy
     volumes:
       - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
-      - caddy_data:/caddy-data:ro
     environment:
-      # --static-auth-secret でコマンドラインに出さず、環境変数経由でturnserverに渡す
+      # --static-auth-secret をcompose設定(docker inspectで見える場所)に書かず、環境変数経由でturnserverに渡す
       TURN_SECRET: ${TURN_SECRET}
-    # 1) 証明書ができるまで待ってから起動
-    # 2) 約7日ごとに自己終了し、restart で Caddy が更新した新しい証明書を読み直す
-    #    (coturnは証明書をホットリロードしないため、再起動でしか更新を反映できない)
-    # 3) Caddyの証明書保存パスにはACME発行元のディレクトリ名(例: acme-v02.api.letsencrypt.org-directory)が
-    #    含まれ、発行元が変わる(ZeroSSLへのフォールバック等)と変化するため、findで動的に探索する
     entrypoint:
       - /bin/sh
       - -c
-      - |
-        domain=turn.kotukoroom.net
-        cert_dir=/caddy-data/caddy/certificates
-        cert=""
-        until [ -n "$$cert" ]; do
-          cert=$$(find "$$cert_dir" -type f -name "$$domain.crt" 2>/dev/null | head -n1)
-          if [ -z "$$cert" ]; then
-            echo "waiting for TLS cert under $$cert_dir"
-            sleep 5
-          fi
-        done
-        key="$${cert%.crt}.key"
-        # rootで読める証明書をnobodyが読める場所へコピー(元はroot専用0600)
-        cp "$$cert" /tmp/turn.crt
-        cp "$$key" /tmp/turn.key
-        chown 65534:65534 /tmp/turn.crt /tmp/turn.key
-        chmod 600 /tmp/turn.crt /tmp/turn.key
-        conf=/tmp/turnserver.conf
-        sed -e "s#^cert=.*#cert=/tmp/turn.crt#" -e "s#^pkey=.*#pkey=/tmp/turn.key#" /etc/coturn/turnserver.conf > "$$conf"
-        chown 65534:65534 "$$conf"
-        # nobody(65534)に権限を落としてturnserverを起動
-        exec timeout 604800 setpriv --reuid=65534 --regid=65534 --clear-groups turnserver -c "$$conf" --static-auth-secret="$$TURN_SECRET"
+      - exec turnserver -c /etc/coturn/turnserver.conf --static-auth-secret="$$TURN_SECRET"
     restart: unless-stopped
 
 volumes:
