@@ -16,10 +16,14 @@ pub enum SignalMessage {
         password: String,
         username: String,
         max_player: u8,
+        #[serde(default)]
+        version: String,
     },
     Join {
         password: String,
         username: String,
+        #[serde(default)]
+        version: String,
     },
     IceServers {
         ice_servers: Vec<IceServer>,

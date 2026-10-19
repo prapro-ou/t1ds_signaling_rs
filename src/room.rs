@@ -8,6 +8,7 @@ pub enum JoinError {
     RoomNotFound,
     RoomFull,
     RoomSealed,
+    VersionMismatch,
 }
 
 pub enum CreateRoomError {
@@ -38,6 +39,8 @@ pub struct Room {
     pub host_id: u32,
     pub clients: Vec<Client>,
     pub is_sealed: bool,
+    /// この部屋が要求するクライアントのバージョン(ホストが作成時に指定)
+    pub version: String,
 }
 
 impl Room {
@@ -54,7 +57,7 @@ impl Room {
             .map(|c| c.username.as_str())
     }
 
-    pub fn add_client(&mut self, client: Client) -> Result<(), JoinError> {
+    pub fn add_client(&mut self, client: Client, version: &str) -> Result<(), JoinError> {
         if self.is_sealed {
             return Err(JoinError::RoomSealed);
         }
@@ -62,6 +65,12 @@ impl Room {
         if self.clients.len() >= self.max_player as usize {
             return Err(JoinError::RoomFull);
         }
+
+        //部屋が要求するバージョンと一致しなければ拒否する(WebRTC移行前に弾く)
+        if self.version != version {
+            return Err(JoinError::VersionMismatch);
+        }
+
         self.clients.push(client);
         Ok(())
     }
@@ -94,6 +103,7 @@ pub fn create_room(
     host: Client,
     max_player: u8,
     max_rooms: usize,
+    version: String,
 ) -> Result<(), CreateRoomError> {
     if rooms.len() >= max_rooms {
         return Err(CreateRoomError::RoomLimitReached);
@@ -106,6 +116,7 @@ pub fn create_room(
                 host_id: host.id,
                 clients: vec![host],
                 is_sealed: false,
+                version,
             });
             Ok(())
         }

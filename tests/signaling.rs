@@ -457,6 +457,51 @@ async fn host_with_too_long_password_returns_error() {
 }
 
 #[tokio::test]
+async fn join_with_mismatched_version_returns_error() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":2,"version":"1.0"}),
+    )
+    .await;
+    recv_json(&mut host).await; // Id
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":"bob","version":"2.0"}),
+    )
+    .await;
+    assert_eq!(
+        recv_json(&mut guest).await,
+        json!({"cmd":"Error","message":"version mismatch"})
+    );
+}
+
+#[tokio::test]
+async fn join_with_matching_version_succeeds() {
+    let addr = spawn_server().await;
+    let mut host = connect(addr).await;
+    let mut guest = connect(addr).await;
+
+    send_json(
+        &mut host,
+        json!({"cmd":"Host","password":"test","username":"alice","max_player":2,"version":"1.0"}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut host).await, json!({"cmd":"Id","id":1}));
+
+    send_json(
+        &mut guest,
+        json!({"cmd":"Join","password":"test","username":"bob","version":"1.0"}),
+    )
+    .await;
+    assert_eq!(recv_json(&mut guest).await, json!({"cmd":"Id","id":2}));
+}
+
+#[tokio::test]
 async fn join_with_too_long_username_returns_error() {
     let addr = spawn_server().await;
     let mut host = connect(addr).await;
