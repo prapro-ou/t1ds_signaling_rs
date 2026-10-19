@@ -50,6 +50,7 @@ pub(crate) fn handle_host(
     username: String,
     max_player: u8,
     max_rooms: usize,
+    version: String,
 ) -> Option<(String, u32)> {
     if let Err(message) = validate_credentials(&password, &username) {
         tracing::warn!(%password, message, "host failed");
@@ -67,7 +68,7 @@ pub(crate) fn handle_host(
         tx: tx.clone(),
     };
     //パスワードが既に使われていないかを調べ、使われてないなら部屋を作る
-    match room::create_room(rooms, password.clone(), client, max_player, max_rooms) {
+    match room::create_room(rooms, password.clone(), client, max_player, max_rooms, version) {
         Ok(()) => {
             tracing::info!(%password, max_player, "room created");
             send(tx, &SignalMessage::Id { id: HOST_PEER_ID });
@@ -151,6 +152,7 @@ fn send_join_error(tx: &mpsc::UnboundedSender<Message>, password: &str, e: room:
         room::JoinError::RoomNotFound => "room not found",
         room::JoinError::RoomFull => "room is full",
         room::JoinError::RoomSealed => "room is sealed",
+        room::JoinError::VersionMismatch => "version mismatch",
     };
     tracing::warn!(%password, message, "join failed");
     send(
@@ -168,6 +170,7 @@ pub(crate) fn handle_join(
     tx: &mpsc::UnboundedSender<Message>,
     password: String,
     username: String,
+    version: String,
 ) -> Option<(String, u32)> {
     if let Err(message) = validate_credentials(&password, &username) {
         tracing::warn!(%password, message, "join failed");
@@ -192,7 +195,7 @@ pub(crate) fn handle_join(
     };
 
     //参加申請
-    if let Err(e) = room.add_client(client) {
+    if let Err(e) = room.add_client(client, &version) {
         send_join_error(tx, &password, e);
         return None;
     }

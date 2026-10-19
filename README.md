@@ -43,8 +43,8 @@ cargo run
 
 | cmd | フィールド | 説明 |
 | --- | --- | --- |
-| `Host` | `password`, `username`, `max_player` | 新しい部屋を作成しホストになる |
-| `Join` | `password`, `username` | 指定したパスワードの部屋に参加する |
+| `Host` | `password`, `username`, `max_player`, `version` | 新しい部屋を作成しホストになる。`version`は部屋が要求するクライアントのバージョン(省略時は空文字列) |
+| `Join` | `password`, `username`, `version` | 指定したパスワードの部屋に参加する。`version`がホストの`version`と一致しないと参加を拒否される(省略時は空文字列) |
 | `Leave` | - | 部屋から退出する |
 | `Seal` | - | 部屋を封鎖し、以降の新規参加を拒否する(ホストのみ) |
 | `Offer` | `target_id`, `sdp` | 指定した相手にSDP Offerを中継する |
@@ -60,7 +60,7 @@ cargo run
 | `HostInfo` | `username` | ホストのユーザー名を通知する(参加時) |
 | `PeerConnect` | `id`, `username` | 新規ピアの参加を通知する |
 | `PeerDisconnect` | `id`, `username` | ピアの退出を通知する |
-| `Error` | `message` | 失敗(部屋が見つからない、満員、封鎖済みなど)を通知する |
+| `Error` | `message` | 失敗(部屋が見つからない、満員、封鎖済み、バージョン不一致など)を通知する |
 
 ホストが退出した場合はセッションを継続できないため、部屋の全員に`PeerDisconnect`を送ったうえで接続を切断し、部屋自体も破棄する。
 

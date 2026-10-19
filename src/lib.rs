@@ -208,9 +208,11 @@ async fn handle_socket_inner(socket: WebSocket, state: AppState) {
                 password,
                 username,
                 max_player,
+                version,
             } => {
-                if let Some(j) = handle_host(&rooms, &tx, password, username, max_player, max_rooms)
-                {
+                if let Some(j) = handle_host(
+                    &rooms, &tx, password, username, max_player, max_rooms, version,
+                ) {
                     if let Some(t) = &turn {
                         send(
                             &tx,
@@ -223,8 +225,12 @@ async fn handle_socket_inner(socket: WebSocket, state: AppState) {
                 }
             }
             //指定したパスワードの部屋に参加する
-            SignalMessage::Join { password, username } => {
-                if let Some(j) = handle_join(&rooms, &tx, password, username) {
+            SignalMessage::Join {
+                password,
+                username,
+                version,
+            } => {
+                if let Some(j) = handle_join(&rooms, &tx, password, username, version) {
                     if let Some(t) = &turn {
                         send(
                             &tx,
